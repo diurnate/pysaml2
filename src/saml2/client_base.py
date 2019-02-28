@@ -375,6 +375,14 @@ class Base(Entity):
             if force_authn:
                 args['force_authn'] = 'true'
 
+        try:
+            is_passive = kwargs['is_passive']
+        except KeyError:
+            is_passive = None
+        finally:
+            if is_passive:
+                args['is_passive'] = 'true'
+
         conf_sp_type = self.config.getattr('sp_type', 'sp')
         conf_sp_type_in_md = self.config.getattr('sp_type_in_metadata', 'sp')
         if conf_sp_type and conf_sp_type_in_md is False:
