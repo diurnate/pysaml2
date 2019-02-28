@@ -390,6 +390,14 @@ class Base(Entity):
 
         args["name_id_policy"] = name_id_policy
 
+        try:
+            is_passive = kwargs['is_passive']
+        except KeyError:
+            is_passive = None
+        finally:
+            if is_passive:
+                args['is_passive'] = 'true'
+
         # eIDAS SPType
         conf_sp_type = self.config.getattr('sp_type', 'sp')
         conf_sp_type_in_md = self.config.getattr('sp_type_in_metadata', 'sp')
