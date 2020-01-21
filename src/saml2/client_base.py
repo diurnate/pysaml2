@@ -372,14 +372,6 @@ class Base(Entity):
             nsprefix = None
 
         try:
-            force_authn = kwargs['force_authn']
-        except KeyError:
-            force_authn = self.config.getattr('force_authn', 'sp')
-        finally:
-            if force_authn:
-                args['force_authn'] = 'true'
-
-        try:
             is_passive = kwargs['is_passive']
         except KeyError:
             is_passive = None
