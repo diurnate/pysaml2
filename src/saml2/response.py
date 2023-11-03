@@ -211,6 +211,9 @@ def for_me(conditions, myself):
         for audience in restriction.audience:
             if audience.text.strip() == myself:
                 return True
+            if myself.startswith(audience.text.strip()):
+                logger.warning("AudienceRestriction - Intended audience is a prefix of myself: %s, %s" % (audience.text.strip(), myself))
+                return True
             else:
                 logger.debug("AudienceRestriction - One condition not satisfied: %s != %s" % (audience.text.strip(), myself))
     logger.debug("AudienceRestrictions not satisfied!")
