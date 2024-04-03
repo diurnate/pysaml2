@@ -1,14 +1,12 @@
 import copy
 import importlib
 import logging
+from logging.config import dictConfig as configure_logging_by_dict
 import logging.handlers
 import os
 import re
 import sys
-from logging.config import dictConfig as configure_logging_by_dict
 from warnings import warn as _warn
-
-import six
 
 from saml2 import BINDING_HTTP_ARTIFACT
 from saml2 import BINDING_HTTP_POST
@@ -16,9 +14,8 @@ from saml2 import BINDING_HTTP_REDIRECT
 from saml2 import BINDING_SOAP
 from saml2 import BINDING_URI
 from saml2 import SAMLError
-
-from saml2.attribute_converter import ac_factory
 from saml2.assertion import Policy
+from saml2.attribute_converter import ac_factory
 from saml2.mdstore import MetadataStore
 from saml2.saml import NAME_FORMAT_URI
 from saml2.virtual_org import VirtualOrg
@@ -26,7 +23,7 @@ from saml2.virtual_org import VirtualOrg
 
 logger = logging.getLogger(__name__)
 
-__author__ = 'rolandh'
+__author__ = "rolandh"
 
 
 COMMON_ARGS = [
@@ -76,6 +73,9 @@ COMMON_ARGS = [
     "metadata",
     "ui_info",
     "name_id_format",
+    "signing_algorithm",
+    "digest_algorithm",
+    "http_client_timeout",
 ]
 
 SP_ARGS = [
@@ -102,6 +102,7 @@ SP_ARGS = [
     "sp_type",
     "sp_type_in_metadata",
     "requested_attributes",
+    "requested_authn_context",
 ]
 
 AA_IDP_ARGS = [
@@ -119,6 +120,7 @@ AA_IDP_ARGS = [
     "domain",
     "name_qualifier",
     "edu_person_targeted_id",
+    "error_url",
 ]
 
 PDP_ARGS = ["endpoints", "name_form", "name_id_format"]
@@ -131,12 +133,12 @@ COMPLEX_ARGS = ["attribute_converters", "metadata", "policy"]
 ALL = set(COMMON_ARGS + SP_ARGS + AA_IDP_ARGS + PDP_ARGS + COMPLEX_ARGS + AA_ARGS)
 
 SPEC = {
-    "":    COMMON_ARGS + COMPLEX_ARGS,
-    "sp":  COMMON_ARGS + COMPLEX_ARGS + SP_ARGS,
+    "": COMMON_ARGS + COMPLEX_ARGS,
+    "sp": COMMON_ARGS + COMPLEX_ARGS + SP_ARGS,
     "idp": COMMON_ARGS + COMPLEX_ARGS + AA_IDP_ARGS,
-    "aa":  COMMON_ARGS + COMPLEX_ARGS + AA_IDP_ARGS + AA_ARGS,
+    "aa": COMMON_ARGS + COMPLEX_ARGS + AA_IDP_ARGS + AA_ARGS,
     "pdp": COMMON_ARGS + COMPLEX_ARGS + PDP_ARGS,
-    "aq":  COMMON_ARGS + COMPLEX_ARGS + AQ_ARGS,
+    "aq": COMMON_ARGS + COMPLEX_ARGS + AQ_ARGS,
 }
 
 _RPA = [BINDING_HTTP_REDIRECT, BINDING_HTTP_POST, BINDING_HTTP_ARTIFACT]
@@ -154,7 +156,7 @@ PREFERRED_BINDING = {
     "authz_service": [BINDING_SOAP],
     "assertion_id_request_service": [BINDING_URI],
     "artifact_resolution_service": [BINDING_SOAP],
-    "attribute_consuming_service": _RPA
+    "attribute_consuming_service": _RPA,
 }
 
 
@@ -162,7 +164,7 @@ class ConfigurationError(SAMLError):
     pass
 
 
-class Config(object):
+class Config:
     def_context = ""
 
     def __init__(self, homedir="."):
@@ -176,7 +178,7 @@ class Config(object):
         self.cert_file = None
         self.encryption_keypairs = None
         self.additional_cert_files = None
-        self.metadata_key_usage = 'both'
+        self.metadata_key_usage = "both"
         self.secret = None
         self.accepted_time_diff = None
         self.name = None
@@ -208,7 +210,7 @@ class Config(object):
         self.entity_attributes = []
         self.entity_category = []
         self.entity_category_support = []
-        self.crypto_backend = 'xmlsec1'
+        self.crypto_backend = "xmlsec1"
         self.scope = ""
         self.allow_unknown_attributes = False
         self.extension_schema = {}
@@ -225,12 +227,15 @@ class Config(object):
         self.attribute_profile = []
         self.requested_attribute_name_format = NAME_FORMAT_URI
         self.delete_tmpfiles = True
+        self.signing_algorithm = None
+        self.digest_algorithm = None
+        self.http_client_timeout = None
 
     def setattr(self, context, attr, val):
         if context == "":
             setattr(self, attr, val)
         else:
-            setattr(self, "_%s_%s" % (context, attr), val)
+            setattr(self, f"_{context}_{attr}", val)
 
     def getattr(self, attr, context=None):
         if context is None:
@@ -239,7 +244,7 @@ class Config(object):
         if context == "":
             return getattr(self, attr, None)
         else:
-            return getattr(self, "_%s_%s" % (context, attr), None)
+            return getattr(self, f"_{context}_{attr}", None)
 
     def load_special(self, cnf, typ):
         for arg in SPEC[typ]:
@@ -273,7 +278,7 @@ class Config(object):
             self.setattr(srv, "policy", Policy(policy_conf, self.metadata))
 
     def load(self, cnf, metadata_construction=None):
-        """ The base load method, loads the configuration
+        """The base load method, loads the configuration
 
         :param cnf: The configuration as a dictionary
         :return: The Configuration instance
@@ -362,7 +367,7 @@ class Config(object):
         return self.load(copy.deepcopy(mod.CONFIG))
 
     def load_metadata(self, metadata_conf):
-        """ Loads metadata into an internal structure """
+        """Loads metadata into an internal structure"""
 
         acs = self.attribute_converters
         if acs is None:
@@ -370,22 +375,25 @@ class Config(object):
 
         try:
             ca_certs = self.ca_certs
-        except:
+        except Exception:
             ca_certs = None
         try:
             disable_validation = self.disable_ssl_certificate_validation
-        except:
+        except Exception:
             disable_validation = False
 
-        mds = MetadataStore(acs, self, ca_certs,
-            disable_ssl_certificate_validation=disable_validation)
-
+        mds = MetadataStore(
+            acs,
+            self,
+            ca_certs,
+            disable_ssl_certificate_validation=disable_validation,
+            http_client_timeout=self.http_client_timeout,
+        )
         mds.imp(metadata_conf)
-
         return mds
 
     def endpoint(self, service, binding=None, context=None):
-        """ Goes through the list of endpoint specifications for the
+        """Goes through the list of endpoint specifications for the
         given type of service and returns a list of endpoint that matches
         the given binding. If no binding is given all endpoints available for
         that service will be returned.
@@ -400,7 +408,12 @@ class Config(object):
         if endps and service in endps:
             for endpspec in endps[service]:
                 try:
-                    endp, bind = endpspec
+                    # endspec sometime is str, sometime is a tuple
+                    if type(endpspec) in (tuple, list):
+                        # slice prevents 3-tuple, eg: sp's assertion_consumer_service
+                        endp, bind = endpspec[0:2]
+                    else:
+                        endp, bind = endpspec
                     if binding is None or bind == binding:
                         spec.append(endp)
                 except ValueError:
@@ -500,7 +513,7 @@ def config_factory(_type, config):
     elif isinstance(config, str):
         conf.load_file(config)
     else:
-        raise ValueError('Unknown type of config')
+        raise ValueError("Unknown type of config")
 
     conf.context = _type
     return conf
