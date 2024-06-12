@@ -1,3 +1,10 @@
+# Truth-specific chnages
+
+This has the following changes:
+
+* Support is_passive in authn requests that is passed through to a remote IDP.
+* Backport the fix for xmlsec1 >= 1.3
+
 # PySAML2 - SAML2 for Python
 
 [![Version](https://img.shields.io/pypi/v/pysaml2)](https://pypi.org/project/pysaml2/)
